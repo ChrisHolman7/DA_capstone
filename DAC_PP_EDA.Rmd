@@ -1,0 +1,120 @@
+---
+title: "Capstone_EDA"
+author: "Chris Holman"
+date: "2023-01-11"
+output: pdf_document
+---
+#questions
+is departing early considered good?
+is arr_delay for the flights previous trip or its next trip after this one?
+
+#takeaways
+wind begins to affect dep_delay at high speeds (>25mph)
+temps > ~75 and < ~15 have longer dep_delay on average
+humid and dewp both see "exponential" increase in avg delay as they increase
+precip & visib have a very skewed distribution, might not offer much for prediction
+wind_dir doesn't appear to me associated with delays
+low pressure seems strongly linked with longer average delays
+
+based on corr: pressure and dewp have highest association w/ dep_delay (not significant though ~0.1)
+
+#ideas
+looking at each aspect of weather individually might not work well, could make new var that indicated severity of weather. Seems planes can handle one bad aspect of weather, but when all aspects of weather are adverse could be when delays happen.
+
+
+```{r}
+library(nycflights13)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+flights_FULL <- flights
+weather_FULL <- weather
+```
+
+```{r}
+weather_FULL
+```
+```{r}
+#number of na per column
+cbind(lapply(lapply(weather_FULL, is.na),sum))
+#removing wind gust (too many NA and just a confusing var)
+weather = subset(weather_FULL,select=-c(wind_gust))
+```
+
+
+```{r}
+cbind(lapply(lapply(flights_FULL, is.na),sum))
+```
+```{r}
+#getting rid of flights with no air time (probably cancelled flights)
+flights = flights_FULL[!is.na(flights_FULL$air_time),]
+```
+
+
+
+
+```{r}
+wf <- merge(flights, weather, by=c('time_hour','origin'))
+#ends up being smaller than flights because there is no weather data for the end of 12/30 and all of 12/31
+#seems negligible
+
+#reducing to just JFK to make more managable
+wf2 <- wf[wf$origin == "JFK",]
+```
+
+
+seems wind starts to factor in after speeds hit around 25 mph
+```{r}
+ggplot(wf2, aes(x=wind_speed, y= dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$wind_speed)
+```
+```{r}
+ggplot(wf2, aes(x=temp, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$temp)
+```
+
+```{r}
+ggplot(wf2, aes(x=dewp, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$dewp)
+```
+
+```{r}
+ggplot(wf2, aes(x=humid, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$humid)
+```
+
+```{r}
+ggplot(wf2, aes(x=precip, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$precip)
+#histogram doesn't look good, seems like an imbalanced classes issue
+```
+
+
+
+```{r}
+ggplot(wf2, aes(x=wind_dir, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$wind_dir)
+```
+
+```{r}
+ggplot(wf2, aes(x=pressure, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$pressure)
+#low pressure is linked with longer average delays
+```
+
+```{r}
+ggplot(wf2, aes(x=visib, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+hist(wf2$visib)
+#bad data
+```
+#correlation matrix
+```{r}
+#only numeric cols
+wf2_numeric <- wf2[, sapply(wf2, is.numeric)]
+wf2_numeric = na.omit(wf2_numeric[,-c(1:3,15:17)])
+
+cor(wf2_numeric)
+```
+
