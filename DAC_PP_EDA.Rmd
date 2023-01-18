@@ -4,85 +4,134 @@ author: "Chris Holman"
 date: "2023-01-11"
 output: pdf_document
 ---
+#plan
+tonight - make slides and get a feel of personal insights
+
+wednesday - work in class/after to get overall insights on the same page and make overarching models
+
+thurdays- rehearse and work on report
+
+friday - finish report need be
+
+#best predictors
+pressure
+wind_speed
+dewp
+
+##important
+switch delay threshold to 15, FAA uses 15
+using arr_delay instead of dep_delay can give a different story
+remove temp (high correlation with temp and dewp is more useful)
+ask about using full data set or if we need to. (maybe like 50-60%)
+
 #questions
-is departing early considered good?
-is arr_delay for the flights previous trip or its next trip after this one?
+is departing early considered good? (dont care)
+is arr_delay for the flights previous trip or its next trip after this one? (for next trip, so var isn't usefuls)
 
 #takeaways
 wind begins to affect dep_delay at high speeds (>25mph)
 temps > ~75 and < ~15 have longer dep_delay on average
-humid and dewp both see "exponential" increase in avg delay as they increase
+ and dewp both see "exponential" increase in avg delay as they increase
 precip & visib have a very skewed distribution, might not offer much for prediction
 wind_dir doesn't appear to me associated with delays
 low pressure seems strongly linked with longer average delays
 
 based on corr: pressure and dewp have highest association w/ dep_delay (not significant though ~0.1)
 
+based on log reg:
+precip seems useful
+
 #ideas
 looking at each aspect of weather individually might not work well, could make new var that indicated severity of weather. Seems planes can handle one bad aspect of weather, but when all aspects of weather are adverse could be when delays happen.
 
-
+#libraries
 ```{r}
 library(nycflights13)
 library(dplyr)
 library(ggplot2)
+library(car)
 ```
-
+#importing data
 ```{r}
 flights_FULL <- flights
 weather_FULL <- weather
 ```
 
 ```{r}
-weather_FULL
+#weather_FULL
 ```
+
+#cleaning data, removing na's)
 ```{r}
 #number of na per column
 cbind(lapply(lapply(weather_FULL, is.na),sum))
 #removing wind gust (too many NA and just a confusing var)
-weather = subset(weather_FULL,select=-c(wind_gust))
+
+if ('wind_gust' %in% colnames(weather_FULL)){
+  Weather = subset(weather_FULL,select=-c(wind_gust))
+}
+
 ```
 
 
 ```{r}
 cbind(lapply(lapply(flights_FULL, is.na),sum))
 ```
+
 ```{r}
 #getting rid of flights with no air time (probably cancelled flights)
 flights = flights_FULL[!is.na(flights_FULL$air_time),]
+
+flights$delayed = flights$dep_delay > 15
+```
+
+#come back to this (check for multicollinearity w/in weather data)
+```{r}
+# weather_numeric <- weather[, sapply(weather, is.numeric)]
+# cor(weather_numeric)
+cbind(lapply(lapply(weather, is.na),sum))
 ```
 
 
-
-
+#merging weather and flights datasets into 'wf'
+#then making smaller wf with just JFK flights
 ```{r}
-wf <- merge(flights, weather, by=c('time_hour','origin'))
+wf <- merge(flights, Weather, by=c('time_hour','origin'))
 #ends up being smaller than flights because there is no weather data for the end of 12/30 and all of 12/31
 #seems negligible
 
 #reducing to just JFK to make more managable
 wf2 <- wf[wf$origin == "JFK",]
+
+cbind(lapply(lapply(wf2, is.na),sum))
 ```
 
 
 seems wind starts to factor in after speeds hit around 25 mph
 ```{r}
-ggplot(wf2, aes(x=wind_speed, y= dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
-hist(wf2$wind_speed)
+ggplot(wf2, aes(x=wind_speed, y= dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=25) + ylab("Average Delay") + xlab("Wind Speed (MPH)") + ggtitle("Effects of Wind Speed on Flight Delays ") + geom_hline(yintercept = 15, color='red')
+hist(wf2$wind_speed, breaks = 21)
+#ggplot(wf2, aes(x=wind_speed, y= dep_delay)) + geom_point()
 ```
+
+
+
 ```{r}
-ggplot(wf2, aes(x=temp, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+ggplot(wf2, aes(x=temp, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay") + xlab("Temperature (F)") + ggtitle("Effects of Temperature on Flight Delays ") + geom_hline(yintercept=15, color='red')
 hist(wf2$temp)
+#ggplot(wf2, aes(x=temp, y= dep_delay)) + geom_count()
 ```
 
 ```{r}
-ggplot(wf2, aes(x=dewp, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
-hist(wf2$dewp)
+ggplot(wf2, aes(x=dewp, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay") + xlab("Dewpoint (F)") + ggtitle("Effect of Dewpoint on Flights Delays") + geom_hline(yintercept = 15, color='red')
+#hist(wf2$dewp)
+#ggplot(wf2, aes(x=dewp, y= dep_delay)) + geom_point()
 ```
 
 ```{r}
-ggplot(wf2, aes(x=humid, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+ggplot(wf2, aes(x=humid, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")+ xlab("Relative Humidity") + ggtitle("Effect of Humidity on Flights Delays") + geom_hline(yintercept = 15, color='red')
 hist(wf2$humid)
+ggplot(wf2, aes(x=humid, y= dep_delay)) + geom_point()
 ```
 
 ```{r}
@@ -91,17 +140,21 @@ hist(wf2$precip)
 #histogram doesn't look good, seems like an imbalanced classes issue
 ```
 
+```{r}
+
+```
 
 
 ```{r}
-ggplot(wf2, aes(x=wind_dir, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
+ggplot(wf2, aes(x=wind_dir, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay")
 hist(wf2$wind_dir)
 ```
 
 ```{r}
-ggplot(wf2, aes(x=pressure, y = dep_delay)) + stat_summary_bin(fun.y='mean', geom='bar', bins=20) + ylab("Average Delay")
-hist(wf2$pressure)
+ggplot(wf2, aes(x=pressure, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay")
+#hist(wf2$pressure, breaks = 100)
 #low pressure is linked with longer average delays
+
 ```
 
 ```{r}
@@ -117,4 +170,97 @@ wf2_numeric = na.omit(wf2_numeric[,-c(1:3,15:17)])
 
 cor(wf2_numeric)
 ```
+
+
+
+```{r}
+curveMaker <- function(name, title){
+  model_glm = glm(delayed ~ name, data = wf2, family = 'binomial')
+  plot(delayed ~ name, data = wf2, xlab = title)
+  curve(predict(model_glm, data.frame(name = x), type='response'),add=TRUE)
+}
+```
+
+```{r}
+#useful
+curveMaker(wf2$precip, 'precip')
+```
+
+
+```{r}
+curveMaker(wf2$pressure , 'pressure')
+```
+```{r}
+plot(wf2$pressure , wf2$dep_delay )
+```
+
+
+
+#find cutpoints by looking at proportion of delays
+#make temp data var (maybe reduce to just jan)
+```{r}
+wd = wf2[, c(20,26,27,29:32)]
+cbind(lapply(lapply(wd, is.na),sum))
+sample <- sample(c(TRUE,FALSE),nrow(wd), replace=TRUE, prob=c(0.7,0.3))
+test = wd[sample,]
+train = wd[!sample,]
+test_x = test[,-1]
+test_y = test$delayed
+
+weather.model = glm(delayed ~ ., data = train, family='binomial')
+
+summary(weather.model)
+
+full_pred = predict(weather.model, newdata = test_x, type='response')
+delay_preds = rep(FALSE,length(full_pred))
+delay_preds[full_pred>0.4]=TRUE
+table(delay_preds,test_y)
+mean(delay_preds == test_y)
+
+
+```
+
+
+
+```{r}
+windProp <- wf2 %>% group_by(wind_speed) %>% summarize(count = n(), delay = sum(delayed))
+
+ggplot(windProp, aes(x=wind_speed, y=delay/count)) + geom_point() + geom_smooth() + xlab("Wind Speed (MPH)") + ylab("Proportion of Flights Delayed") + ggtitle("Effect of Wind Speed on Flight Delays")
+```
+
+```{r}
+#come back to this
+testing <- wf2 %>% mutate(pressureBIN = case_when(pressure >= 40  & pressure <= 49 ~ '3',
+                                             pressure >= 30  & pressure <= 39 ~ '2',
+                                             pressure >= 20  & pressure <= 29 ~ '1'))
+
+presProp <- wf2 %>% group_by(pressure) %>% summarize(count = n(), delay = sum(delayed))
+
+ggplot(presProp, aes(x=pressure, y=delay/count)) + geom_point() + geom_smooth() + xlab("Pressure (mb.)") + ylab("Proportion of Flights Delayed") + ggtitle("Effect of Pressure on Flight Delays")
+```
+
+```{r}
+dewpProp <- wf2 %>% group_by(dewp) %>% summarize(count = n(), delay = sum(delayed))
+
+ggplot(dewpProp, aes(x=dewp, y=delay/count)) + geom_point() + geom_smooth() + xlab("Dewpoint (F)") + ylab("Proportion of Flights Delayed") + ggtitle("Effect of Dewpoint on Flight Delays")
+```
+
+```{r}
+precipProp <- wf2 %>% group_by(precip) %>% summarize(count = n(), delay = sum(delayed))
+
+ggplot(precipProp, aes(x=precip, y=delay/count)) + geom_point() + geom_smooth() + xlab("Precipitation") + ylab("Proportion of Flights Delayed") + ggtitle("Effect of Precipitation on Flight Delays")
+```
+
+# model, manu, dest, carrier, month (sneaky)
+# pressure, wind speed, dewp
+
+#do camerons cleaning
+```{r}
+
+
+
+
+```
+
+
 
