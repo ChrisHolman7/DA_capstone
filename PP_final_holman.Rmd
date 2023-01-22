@@ -1,0 +1,137 @@
+---
+title: "PP_Final_Holman"
+author: "Chris Holman"
+date: "2023-01-22"
+output: pdf_document
+---
+## Importing libraries
+```{r message=FALSE}
+library(nycflights13)
+library(dplyr)
+library(ggplot2)
+library(car)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+## Getting data
+```{r}
+data(flights)
+data(weather)
+```
+
+# EDA
+
+## Checking for na in weather
+```{r}
+#number of na per column
+cbind(lapply(lapply(weather, is.na),sum))
+#removing wind gust (too many NA and just a confusing var)
+if ('wind_gust' %in% colnames(weather)){
+  #cleaned weather
+  w = subset(weather,select=-c(wind_gust))
+}
+```
+
+We decided to remove the wind gust variable because it had a large amount of NA values. About three quarters of the data do not have values for this predictor. Also, from reading the data dictionary it was hard to understand what the wind gust variable meant.
+
+## Cleaning flights data
+```{r}
+cbind(lapply(lapply(flights, is.na),sum))
+
+#cleaned flights
+f = flights[!is.na(flights$air_time),]
+
+f$sigDelay = f$dep_delay > 15
+```
+Within the flights data set, there is another issue of NA values with the air time variable having the most. We interpreted NA for air time as meaning the flights was cancelled. Since cancellation is different from departure delays, we removed all observations with out an air time. This gets rid of the rest of NA values for the whole flights data set.  
+
+We also created a variable named "sigDelay" which is a binary variable that encodes whether of not a flight was delayed according to the FAA's definition of a 15 minute threshold for if a flight is delayed.
+
+# Checking for multicollinearity
+
+### Weather Correlation
+```{r}
+#getting only numeric columns and removing na's
+w_numeric <- w[, sapply(w, is.numeric)]
+w_numeric <- na.omit(w_numeric[,c(5:12)])
+
+cor(w_numeric)
+```
+
+Before we look for trends with delays, its important to get a feel for the data and understand how variables related to each other. There seems to be some high correlations within the weather data set which could lead to come multicollinearity issues. This means that multiple variables encode similar information. When modeling, this can reduce the model's effectiveness. The variables with the highest correlations are temperature, dew point, and humidity.
+
+
+### Flights Correlation
+```{r}
+#getting only numeric columns and removing na's
+f_numeric <- f[, sapply(f, is.numeric)]
+f_numeric <- na.omit(f_numeric[,c(4:12)])
+
+cor(f_numeric)
+```
+The flights data set looks to have more cases of multicollinearity. This makes sense when looking at the variables and what the represent. Since most of the variables are related to departure and arrival times, the scheduled and actual times for each particular flight are similar. Also, variables like departure delay and arrival delay are derived from the difference between the actual and scheduled times. This means that only a few of these variables will prove to be useful when we begin modeling. Finally, variables like arrival delay or arrival time should not be used because in practice those will not be known before a flight takes off from New York.
+
+# Looking for trends with Departure Delay
+```{r}
+#merging together cleaned weather and flights data
+wf <- merge(f, w, by=c('time_hour','origin'))
+```
+
+```{r}
+ggplot(wf, aes(x=wind_speed, y= dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=25) + ylab("Average Delay") + xlab("Wind Speed (MPH)") + ggtitle("Effects of Wind Speed on Flight Delays ") + geom_hline(yintercept = 15, color='red') + theme(axis.title= element_text(size = 15),plot.title = element_text(size = 20))
+```
+```{r}
+ggplot(wf, aes(x=temp, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay") + xlab("Temperature (F)") + ggtitle("Effects of Temperature on Flight Delays ") + geom_hline(yintercept=15, color='red') + theme(axis.title= element_text(size = 15),plot.title = element_text(size = 20))
+```
+
+```{r}
+ggplot(wf, aes(x=dewp, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay") + xlab("Dewpoint (F)") + ggtitle("Effect of Dewpoint on Flights Delays") + geom_hline(yintercept = 15, color='red') + theme(axis.title= element_text(size = 15),plot.title = element_text(size = 20))
+```
+
+```{r}
+ggplot(wf, aes(x=humid, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay")+ xlab("Relative Humidity") + ggtitle("Effect of Humidity on Flights Delays") + geom_hline(yintercept = 15, color='red') + theme(axis.title= element_text(size = 15),plot.title = element_text(size = 20))
+```
+
+```{r}
+ggplot(wf, aes(x=pressure, y = dep_delay)) + stat_summary_bin(fun='mean', geom='bar', bins=20) + ylab("Average Delay") + xlab("Pressure (millibars)") + ggtitle("Effects of Air Pressure on Flight Delays") + geom_hline(yintercept = 15, color='red') + theme(axis.title= element_text(size = 15),plot.title = element_text(size = 20))
+```
+
+### Takeways
+It seems like wind speed, temperature, dew point, pressure, and humidity are the variables with strongest relationship with departure delay.
+
+
+# Modeling
+
+* Goal: Create a model to help decide which variables are most useful and maybe get a hierarchy within them.
+
+## Checking Assumptions
+
+Logistic regression has less assumptions than Linear regression. It requires a binary response, which we have with our 'sigDelay' variable. Also, there cannot be multicollinearity. Earlier from the correlation matrix, we saw that dew point and temperature had high correlation which could be an indication of multicollinearity. So dew point was chosen as the variable to add to the model because it had visually had the strongest relationship with the response. Finally, our sample size is still very large even after eliminating rows for missing data and removing variables.
+
+```{r}
+wd = wf[, c(20,26,27,29:32)]
+sample <- sample(c(TRUE,FALSE),nrow(wd), replace=TRUE, prob=c(0.7,0.3))
+test = wd[sample,]
+train = wd[!sample,]
+test_x = test[,-1]
+test_y = test$sigDelay
+
+weather.model = glm(sigDelay ~ ., data = train, family='binomial')
+
+summary(weather.model)
+
+full_pred = predict(weather.model, newdata = test_x, type='response')
+delay_preds = rep(FALSE,length(full_pred))
+delay_preds[full_pred>0.4]=TRUE
+print("TEST RESULTS")
+table(delay_preds,test_y)
+mean(delay_preds == test_y)
+```
+
+### Model Results
+
+Our model shows that dew point, wind speed, and pressure seem to be the most power predictors of a delay occurring. Variables such as precipitation and visibility should be taken with a grain of salt because they have very skewed distributions of data.
+
+Using the model to predict on training data resulted in a 78% accuracy rate. At first glance this seems like a positive, however it overwhelmingly predicts flights to not be delayed. In fact, ~80% of flights were not delayed in this data set so always predicting no delay results in ~ 80% accuracy anyway. Therefore, this model is not ideal for prediction and should just be used to determine useful variables.
+
